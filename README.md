@@ -1,0 +1,47 @@
+# OPAQUE
+[![OPAQUE](https://github.com/Jan-nku/opaque/actions/workflows/ci.yml/badge.svg)](https://github.com/Jan-nku/opaque/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Jan-nku/opaque.svg)](https://pkg.go.dev/github.com/Jan-nku/opaque)
+[![codecov](https://codecov.io/gh/Jan-nku/opaque/branch/main/graph/badge.svg?token=5bQfB0OctA)](https://codecov.io/gh/Jan-nku/opaque)
+
+```
+  import "github.com/Jan-nku/opaque"
+```
+
+This package implements [OPAQUE](https://datatracker.ietf.org/doc/draft-irtf-cfrg-opaque), an asymmetric password-authenticated
+key exchange protocol that is secure against pre-computation attacks. It enables a client to authenticate to a server
+without ever revealing its password to the server. 
+
+This implementation is developed by one of the authors of the RFC [Internet Draft](https://github.com/cfrg/draft-irtf-cfrg-opaque).
+The main branch is in sync with the latest developments of the draft, and [the releases](https://github.com/Jan-nku/opaque/releases)
+correspond to the [official draft versions](https://datatracker.ietf.org/doc/draft-irtf-cfrg-opaque).
+
+#### What is OPAQUE?
+
+> OPAQUE is a PKI-free secure aPAKE that is secure against pre-computation attacks. OPAQUE provides forward secrecy with
+> respect to password leakage while also hiding the password from the server, even during password registration. OPAQUE
+> allows applications to increase the difficulty of offline dictionary attacks via iterated hashing or other key
+> stretching schemes. OPAQUE is also extensible, allowing clients to safely store and retrieve arbitrary application data
+> on servers using only their password.
+
+#### References
+- [The original paper](https://eprint.iacr.org/2018/163.pdf) from Jarecki, Krawczyk, and Xu.
+- [OPAQUE is used in WhatsApp](https://www.whatsapp.com/security/WhatsApp_Security_Encrypted_Backups_Whitepaper.pdf) to enable end-to-end encrypted backups.
+- [The GitHub repo](https://github.com/cfrg/draft-irtf-cfrg-opaque) where the draft is being specified.
+
+## Documentation [![Go Reference](https://pkg.go.dev/badge/github.com/Jan-nku/opaque.svg)](https://pkg.go.dev/github.com/Jan-nku/opaque)
+
+You can find the documentation and usage examples in [the package doc](https://pkg.go.dev/github.com/Jan-nku/opaque) and [the project wiki](https://github.com/Jan-nku/opaque/wiki) . 
+
+## Versioning
+
+[SemVer](http://semver.org) is used for versioning. For the versions available, see the [tags on the repository](https://github.com/Jan-nku/opaque/tags).
+
+Minor v0.x versions match the corresponding CFRG draft version, the master branch implements the latest changes of [the draft development](https://github.com/cfrg/draft-irtf-cfrg-opaque).
+
+## Contributing
+
+Please read [CONTRIBUTING.md](.github/CONTRIBUTING.md) for details on the code of conduct, and the process for submitting pull requests.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
