@@ -9,10 +9,12 @@
 package opaque
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Jan-nku/opaque/internal/oprf"
 	"net/http"
+	"sync"
 
 	group "github.com/bytemare/crypto"
 
@@ -92,6 +94,93 @@ func (s *Server) GetConf() *internal.Configuration {
 	return s.conf
 }
 
+// 客户端发送HTTP请求的函数
+func (s *Server) httpResponse(url string, wg *sync.WaitGroup, resultChan chan<- *group.Element) {
+	defer wg.Done()
+
+	// 发送HTTPS GET请求
+	response, err := http.Get(url)
+	if err != nil {
+		fmt.Println("无法发送请求:", err)
+	}
+	defer response.Body.Close()
+
+	// 检查响应的状态码
+	if response.StatusCode != http.StatusOK {
+		fmt.Println("请求失败，状态码:", response.StatusCode)
+	}
+
+	// 解码JSON响应
+	var data map[string]interface{}
+	decoder := json.NewDecoder(response.Body)
+	if err := decoder.Decode(&data); err != nil {
+		fmt.Println("解码JSON失败:", err)
+	}
+
+	//ZKP Verify process
+	gk := s.conf.Group.NewElement()
+	gk.Decode(encoding.Base64StringToByteArray(data["gk"].(string)))
+
+	x := s.conf.Group.NewElement()
+	x.Decode(encoding.Base64StringToByteArray(data["x"].(string)))
+
+	y := s.conf.Group.NewElement()
+	y.Decode(encoding.Base64StringToByteArray(data["y"].(string)))
+
+	h := s.conf.Group.NewScalar()
+	h.Decode(encoding.Base64StringToByteArray(data["h"].(string)))
+
+	u := s.conf.Group.NewScalar()
+	u.Decode(encoding.Base64StringToByteArray(data["u"].(string)))
+
+	v := s.conf.Group.NewScalar()
+	v.Decode(encoding.Base64StringToByteArray(data["v"].(string)))
+
+	a1 := s.conf.Group.NewElement().Base().Multiply(u).Add(gk.Multiply(h))
+	a2 := x.Copy().Multiply(u).Add(y.Multiply(h))
+
+	hashInput := append(append(append(append(append(s.conf.Group.NewElement().Base().Encode(), gk.Encode()...), x.Encode()...), v.Encode()...), a1.Encode()...), a2.Encode()...)
+	h_verify := s.conf.Group.HashToScalar(hashInput, []byte("ZKP: hash to group"))
+	if h_verify.Equal(h) != 1 {
+		fmt.Printf("ZKP error!")
+	}
+
+	// 将结果发送到通道
+	resultChan <- y
+}
+
+// TODO: topaqueResponse(Variant of oprfResponse to support toprf)
+func (s *Server) topaqueResponse(element *group.Element, credentialIdentifier []byte, threshold int) *group.Element {
+	str_element := encoding.ByteArrayToBase64String(element.Encode())
+	credID := string(credentialIdentifier)
+
+	var wg sync.WaitGroup
+	resultChan := make(chan *group.Element, threshold)
+
+	// 并发发送threshold个请求
+	for i := 1; i <= threshold; i++ {
+		wg.Add(1)
+		url := fmt.Sprintf("1.92.90.89:%d?credID=%s&element=%s", 9090+i, credID, str_element)
+		go s.httpResponse(url, &wg, resultChan)
+	}
+
+	// 等待所有goroutine完成
+	wg.Wait()
+
+	// 关闭通道，确保所有goroutine都已完成
+	close(resultChan)
+
+	blindedMessage := s.conf.Group.NewElement().Identity()
+
+	// 从通道读取结果并将y的值相加
+	for y := range resultChan {
+		blindedMessage.Add(y)
+	}
+
+	//return blinded element Aggregated from threshold servers
+	return blindedMessage
+}
+
 // TODO: oprfResponse
 func (s *Server) oprfResponse(element *group.Element, oprfSeed, credentialIdentifier []byte) *group.Element {
 	//oprfSeed, credentialIdentifier --> seed
@@ -131,6 +220,23 @@ func (s *Server) HpakeRegistrationResponse(
 	//New: Cryptor Service
 	b := s.OPRF.ServiceReg(a1, a2, client)
 	z := s.OPRF.UnBlind(b)
+
+	return &message.RegistrationResponse{
+		EvaluatedMessage: z,
+		Pks:              serverPublicKey,
+	}
+}
+
+// TODO: Modify RegistrationResponse func to support topaque
+// RegistrationResponse returns a RegistrationResponse message to the input RegistrationRequest message and given
+// identifiers.
+func (s *Server) TopaqueRegistrationResponse(
+	req *message.RegistrationRequest,
+	serverPublicKey *group.Element,
+	credentialIdentifier []byte,
+	threshold int,
+) *message.RegistrationResponse {
+	z := s.topaqueResponse(req.BlindedMessage, credentialIdentifier, threshold)
 
 	return &message.RegistrationResponse{
 		EvaluatedMessage: z,
@@ -184,6 +290,26 @@ func (s *Server) hpakeCredentialResponse(
 	maskingNonce, maskedResponse := masking.Mask(
 		s.conf,
 		maskingNonce, // record.TestMaskNonce = nil
+		record.MaskingKey,
+		serverPublicKey,
+		record.Envelope,
+	)
+
+	return message.NewCredentialResponse(z, maskingNonce, maskedResponse)
+}
+
+func (s *Server) topaqueCredentialResponse(
+	req *message.CredentialRequest,
+	serverPublicKey []byte,
+	record *message.RegistrationRecord,
+	credentialIdentifier, maskingNonce []byte,
+	threshold int,
+) *message.CredentialResponse {
+	z := s.topaqueResponse(req.BlindedMessage, credentialIdentifier, threshold)
+
+	maskingNonce, maskedResponse := masking.Mask(
+		s.conf,
+		maskingNonce,
 		record.MaskingKey,
 		serverPublicKey,
 		record.Envelope,
@@ -342,6 +468,41 @@ func (s *Server) HpakeLoginInit(
 	//SetIdentities sets the client and server identities to their respective public key if not set.
 	identities.SetIdentities(record.PublicKey, s.keyMaterial.serverPublicKey)
 	//TODO: Response func produce message ke2
+	ke2 := s.Ake.Response(s.conf, &identities, s.keyMaterial.serverSecretKey, record.PublicKey, ke1, response, *op)
+
+	return ke2, nil
+}
+
+// TODO: Modify LoginInit(ke1, record) to support topaque
+// LoginInit responds to a KE1 message with a KE2 message a client record.
+func (s *Server) TopaqueLoginInit(
+	ke1 *message.KE1,
+	record *ClientRecord,
+	threshold int,
+	options ...ServerLoginInitOptions,
+) (*message.KE2, error) {
+	if s.keyMaterial == nil {
+		return nil, ErrNoServerKeyMaterial
+	}
+
+	if len(record.Envelope) != s.conf.EnvelopeSize {
+		return nil, ErrInvalidEnvelopeLength
+	}
+
+	// We've checked that the server's public key and the client's envelope are of correct length,
+	// thus ensuring that the subsequent xor-ing input is the same length as the encryption pad.
+
+	op := getServerLoginInitOptions(options)
+
+	response := s.topaqueCredentialResponse(ke1.CredentialRequest, s.keyMaterial.serverPublicKey,
+		record.RegistrationRecord, record.CredentialIdentifier, record.TestMaskNonce, threshold)
+
+	identities := ake.Identities{
+		ClientIdentity: record.ClientIdentity,
+		ServerIdentity: s.keyMaterial.serverIdentity,
+	}
+	identities.SetIdentities(record.PublicKey, s.keyMaterial.serverPublicKey)
+
 	ke2 := s.Ake.Response(s.conf, &identities, s.keyMaterial.serverSecretKey, record.PublicKey, ke1, response, *op)
 
 	return ke2, nil
