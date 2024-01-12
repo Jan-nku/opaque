@@ -119,6 +119,13 @@ func (s *Server) httpResponse(url string, wg *sync.WaitGroup, resultChan chan<- 
 		fmt.Println("解码JSON失败:", err)
 	}
 
+	fmt.Printf("gk: %s\n", data["gk"].(string))
+	fmt.Printf("x: %s\n", data["x"].(string))
+	fmt.Printf("y: %s\n", data["y"].(string))
+	fmt.Printf("h: %s\n", data["h"].(string))
+	fmt.Printf("u: %s\n", data["u"].(string))
+	fmt.Printf("v: %s\n", data["v"].(string))
+
 	//ZKP Verify process
 	var decoded []byte
 	gk := s.conf.Group.NewElement()
@@ -145,8 +152,8 @@ func (s *Server) httpResponse(url string, wg *sync.WaitGroup, resultChan chan<- 
 	decoded, _ = base64.StdEncoding.DecodeString(data["v"].(string))
 	v.Decode(decoded)
 
-	a1 := s.conf.Group.NewElement().Base().Multiply(u).Add(gk.Multiply(h))
-	a2 := x.Copy().Multiply(u).Add(y.Multiply(h))
+	a1 := s.conf.Group.NewElement().Base().Multiply(u).Add(gk.Copy().Multiply(h))
+	a2 := x.Copy().Multiply(u).Add(y.Copy().Multiply(h))
 
 	hashInput := append(append(append(append(append(s.conf.Group.NewElement().Base().Encode(), gk.Encode()...), x.Encode()...), v.Encode()...), a1.Encode()...), a2.Encode()...)
 	h_verify := s.conf.Group.HashToScalar(hashInput, []byte("ZKP: hash to group"))
@@ -160,8 +167,10 @@ func (s *Server) httpResponse(url string, wg *sync.WaitGroup, resultChan chan<- 
 
 // TODO: topaqueResponse(Variant of oprfResponse to support toprf)
 func (s *Server) topaqueResponse(element *group.Element, credentialIdentifier []byte, threshold int) *group.Element {
-	str_element := base64.StdEncoding.EncodeToString(element.Encode())
+	str_element := url.QueryEscape(base64.StdEncoding.EncodeToString(element.Encode()))
 	credID := url.QueryEscape(base64.StdEncoding.EncodeToString(credentialIdentifier))
+	fmt.Printf("element: %s\n", str_element)
+	fmt.Printf("credID: %s\n", credID)
 
 	var wg sync.WaitGroup
 	resultChan := make(chan *group.Element, threshold)
