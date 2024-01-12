@@ -9,6 +9,7 @@
 package opaque
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -118,23 +119,30 @@ func (s *Server) httpResponse(url string, wg *sync.WaitGroup, resultChan chan<- 
 	}
 
 	//ZKP Verify process
+	var decoded []byte
 	gk := s.conf.Group.NewElement()
-	gk.Decode(encoding.Base64StringToByteArray(data["gk"].(string)))
+	decoded, _ = base64.StdEncoding.DecodeString(data["gk"].(string))
+	gk.Decode(decoded)
 
 	x := s.conf.Group.NewElement()
-	x.Decode(encoding.Base64StringToByteArray(data["x"].(string)))
+	decoded, _ = base64.StdEncoding.DecodeString(data["x"].(string))
+	x.Decode(decoded)
 
 	y := s.conf.Group.NewElement()
-	y.Decode(encoding.Base64StringToByteArray(data["y"].(string)))
+	decoded, _ = base64.StdEncoding.DecodeString(data["y"].(string))
+	y.Decode(decoded)
 
 	h := s.conf.Group.NewScalar()
-	h.Decode(encoding.Base64StringToByteArray(data["h"].(string)))
+	decoded, _ = base64.StdEncoding.DecodeString(data["h"].(string))
+	h.Decode(decoded)
 
 	u := s.conf.Group.NewScalar()
-	u.Decode(encoding.Base64StringToByteArray(data["u"].(string)))
+	decoded, _ = base64.StdEncoding.DecodeString(data["u"].(string))
+	u.Decode(decoded)
 
 	v := s.conf.Group.NewScalar()
-	v.Decode(encoding.Base64StringToByteArray(data["v"].(string)))
+	decoded, _ = base64.StdEncoding.DecodeString(data["v"].(string))
+	v.Decode(decoded)
 
 	a1 := s.conf.Group.NewElement().Base().Multiply(u).Add(gk.Multiply(h))
 	a2 := x.Copy().Multiply(u).Add(y.Multiply(h))
@@ -151,8 +159,8 @@ func (s *Server) httpResponse(url string, wg *sync.WaitGroup, resultChan chan<- 
 
 // TODO: topaqueResponse(Variant of oprfResponse to support toprf)
 func (s *Server) topaqueResponse(element *group.Element, credentialIdentifier []byte, threshold int) *group.Element {
-	str_element := encoding.ByteArrayToBase64String(element.Encode())
-	credID := string(credentialIdentifier)
+	str_element := base64.StdEncoding.EncodeToString(element.Encode())
+	credID := base64.StdEncoding.EncodeToString(credentialIdentifier)
 
 	var wg sync.WaitGroup
 	resultChan := make(chan *group.Element, threshold)
