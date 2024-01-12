@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"github.com/Jan-nku/opaque/internal/oprf"
 	"net/http"
+	"net/url"
 	"sync"
 
 	group "github.com/bytemare/crypto"
@@ -160,7 +161,7 @@ func (s *Server) httpResponse(url string, wg *sync.WaitGroup, resultChan chan<- 
 // TODO: topaqueResponse(Variant of oprfResponse to support toprf)
 func (s *Server) topaqueResponse(element *group.Element, credentialIdentifier []byte, threshold int) *group.Element {
 	str_element := base64.StdEncoding.EncodeToString(element.Encode())
-	credID := base64.StdEncoding.EncodeToString(credentialIdentifier)
+	credID := url.QueryEscape(base64.StdEncoding.EncodeToString(credentialIdentifier))
 
 	var wg sync.WaitGroup
 	resultChan := make(chan *group.Element, threshold)
@@ -168,7 +169,7 @@ func (s *Server) topaqueResponse(element *group.Element, credentialIdentifier []
 	// 并发发送threshold个请求
 	for i := 1; i <= threshold; i++ {
 		wg.Add(1)
-		url := fmt.Sprintf("1.92.90.89:%d?credID=%s&element=%s", 9090+i, credID, str_element)
+		url := fmt.Sprintf("http://1.92.90.89:%d?credID=%s&element=%s", 9090+i, credID, str_element)
 		go s.httpResponse(url, &wg, resultChan)
 	}
 
